@@ -2,7 +2,7 @@
 
 > **Document Version:** 1.0.0
 
-> **Status:** Draft / Approved
+> **Status:** Draft — design target, not implemented. See `README.md` for what `aop.py` actually does.
 
 > **Target Audience:** Core AI Engineers, Systems Architects, and SDLC Tool Developers
 
@@ -72,7 +72,7 @@ The middleware client wraps HTTP POST requests sent to https://openrouter.ai/api
 
 #### **Key Responsibilities**
 
-* **Header Management:** Include mandatory OpenRouter identification headers (HTTP-Referer, X-Title).  
+* **Header Management:** OpenRouter's identification headers (HTTP-Referer, X-Title) are **optional** attribution, not required. Send them only if you want the run attributed.  
 * **Fallback Strategy:** Support primary and secondary model endpoints if the target provider returns standard HTTP errors (e.g., 429 Too Many Requests, 502 Bad Gateway, 503 Service Unavailable).  
 * **Structured Output Enforcement:** Support response\_format: {"type": "json\_object"} or JSON Schema mode for model endpoints that support structured outputs.
 

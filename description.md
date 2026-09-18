@@ -1,3 +1,5 @@
+> **Status: historical concept canvas.** Cost, savings and performance figures below (including 65–75%) are UNBENCHMARKED hypotheses. The illustrative pipeline code is known-wrong — it reaches the reviewer after exhausting failed build attempts — and is kept for provenance only. `README.md` describes the implemented tool.
+
 # **Project Canvas: Autonomous OpenRouter Pipeline (AOP)**
 
 > **Tagline:** A multi-model software factory orchestration engine leveraging OpenRouter as a unified AI middleware layer to execute autonomous SDLC workflows with deterministic gate checks.
