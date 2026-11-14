@@ -244,7 +244,8 @@ def failing_tests(paths=(), timeout=SUITE_TIMEOUT):
 def gate(target, test_file, baseline):
     """AST parse -> scouted test -> whole suite vs baseline. Returns (passed, error_payload)."""
     try:
-        ast.parse(open(target).read(), filename=target)
+        with open(target) as source:
+            ast.parse(source.read(), filename=target)
     except SyntaxError as e:
         return False, f"SyntaxError in {target}: {e}"
     try:
@@ -260,7 +261,14 @@ def gate(target, test_file, baseline):
 
 
 def snapshot(*paths):
-    return {p: (open(p, "rb").read() if os.path.exists(p) else None) for p in paths}
+    snap = {}
+    for p in paths:
+        if os.path.exists(p):
+            with open(p, "rb") as source:
+                snap[p] = source.read()
+        else:
+            snap[p] = None
+    return snap
 
 
 def restore(snap):
@@ -269,12 +277,14 @@ def restore(snap):
             if os.path.exists(p):
                 os.remove(p)
         else:
-            open(p, "wb").write(data)
+            with open(p, "wb") as destination:
+                destination.write(data)
 
 
 def write(path, text):
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    open(path, "w").write(text)
+    with open(path, "w") as destination:
+        destination.write(text)
 
 
 def review(goal, plan, target, before, after, evidence):
@@ -319,26 +329,29 @@ def run(goal):
             code = build(goal, plan, current, error)  # generate first: an open() here truncates
             write(target, code)                       # the target while the request is still out
             passed, error = gate(target, test_file, baseline)
-            if open(test_file).read() != contract:
-                raise SystemExit("[x] the test contract changed during the run; reverted")
+            with open(test_file) as source:
+                if source.read() != contract:
+                    raise SystemExit("[x] the test contract changed during the run; reverted")
             if passed:
                 break
             print(f"[!] gate failed:\n{textwrap.indent(error[-600:], '    ')}")
         else:
             raise SystemExit(f"[x] gate never passed after {MAX_RETRIES} attempts; reverted")
+
+        evidence = (f"- ast.parse on {os.path.relpath(target)}: ok\n"
+                    f"- pytest {os.path.relpath(test_file)}: passed\n"
+                    f"- full suite: no new failures vs a {len(baseline)}-failure baseline\n"
+                    f"- build attempts: {attempts}/{MAX_RETRIES}\n"
+                    f"- not checked: lint, types, runtime behaviour outside the contract")
+        print(f"[+] gate passed\n{textwrap.indent(evidence, '    ')}\n[*] review")
+        with open(target) as source:
+            after = source.read()
+        print(review(goal, plan, target, current, after, evidence))
+        print(f"\n[=] left in the working tree, uncommitted: {os.path.relpath(target)}, "
+              f"{os.path.relpath(test_file)}")
     except BaseException:
         restore(snap)
         raise
-
-    evidence = (f"- ast.parse on {os.path.relpath(target)}: ok\n"
-                f"- pytest {os.path.relpath(test_file)}: passed\n"
-                f"- full suite: no new failures vs a {len(baseline)}-failure baseline\n"
-                f"- build attempts: {attempts}/{MAX_RETRIES}\n"
-                f"- not checked: lint, types, runtime behaviour outside the contract")
-    print(f"[+] gate passed\n{textwrap.indent(evidence, '    ')}\n[*] review")
-    print(review(goal, plan, target, current, open(target).read(), evidence))
-    print(f"\n[=] left in the working tree, uncommitted: {os.path.relpath(target)}, "
-          f"{os.path.relpath(test_file)}")
 
 
 # --- checks -------------------------------------------------------------------------------------
