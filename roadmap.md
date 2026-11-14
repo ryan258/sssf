@@ -17,7 +17,8 @@ This roadmap tracks the development milestones of the Autonomous OpenRouter Pipe
 - **Basic Snapshot:** In-memory file snapshot and restore upon retry exhaustion.
 
 ### [x] v0.2 — Safety Hardening & Harness Isolation (Current)
-- **Lifecycle Revert:** Unified `try ... except BaseException` block restoring snapshots on provider errors, process timeouts, `Ctrl-C`, or gate exhaustion.
+- **Lifecycle & Review Revert:** Unified `try ... except BaseException` block enclosing build, gate, and review phases. Restores snapshots on provider errors, process timeouts, `Ctrl-C`, gate exhaustion, or reviewer failure/cancellation.
+- **Context-Managed File I/O:** Explicit context manager file handling across `write`, `snapshot`, `restore`, and `gate`, ensuring buffered write and flush failures propagate immediately.
 - **Target Isolation:** Complete code generation in memory before opening file handles; zero truncation on mid-generation failure.
 - **Contract Immutability:** Hash-verified contract preservation preventing generated test modification during gate runs.
 - **Path & Containment Safety:** Strict containment checking preventing path traversal, symlink resolution, dot-directory penetration, and targeting protected config files (`aop.py`, `conftest.py`, packaging configs).
@@ -25,6 +26,7 @@ This roadmap tracks the development milestones of the Autonomous OpenRouter Pipe
 - **Exit Code Classification:** Rejection of non-test pytest exit codes (`2` collection errors, `3` internal errors, `4` usage errors) to prevent falsely passing broken test suites.
 - **Transport Resilience & Budget:** Exponential backoff for retryable HTTP errors (408/409/425/429/5xx), immediate failure for non-retryable 4xx codes, truncation detection (`finish_reason: length`), and global per-run token budget ceiling (`TOKEN_BUDGET = 400_000`).
 - **Isolated Selftest Harness:** Self-contained temporary directory testing with ephemeral git roots, fake provider stubs, and regression checks covering F01 through F10 edge cases.
+- **Offline Unit Regression Suite:** `unittest` test suite under `tests/` validating review rollback, cancellation cleanup, success retention, and buffered stream failure handling.
 - **CLI Standardization:** Standard argument parsing via `argparse` supporting `--selftest`, `--version`, and `--help`.
 
 ---

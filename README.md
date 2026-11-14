@@ -130,7 +130,8 @@ What is actually enforced, and where each one stops:
   reach pytest. That is a credential boundary, nothing more: generated tests still run as a
   normal child process with your filesystem and network. Code that writes outside the two
   declared files is *not* reverted.
-- **No partial success** — a failed run raises `SystemExit` *before* the review call.
+- **No partial success** — a failed gate never reaches review. A reviewer transport
+  failure or cancellation also restores both declared files and exits unsuccessfully.
   Broken code is never described as working.
 - **Loud, not clever** — `null` content, a 200-with-error-body, a truncated generation or
   a reset connection each produce one clear line naming the model and provider.
@@ -201,9 +202,15 @@ See [roadmap.md](roadmap.md) for milestone tracking and triggers, and [docs/arch
 
 ```bash
 python3 aop.py --selftest
+python3 -m unittest discover -s tests -v
 ```
 
-Runs in its own temporary git workspace — no fixed filenames in your tree, no discovery of
+The focused offline unit regressions cover reviewer failure/cancellation, exact-byte
+restoration, successful retention and buffered write/restore failures using only
+temporary synthetic files and failing in-memory streams. Writes are explicitly closed
+before returning, so buffered I/O errors propagate instead of appearing successful.
+
+The selftest runs in its own temporary git workspace — no fixed filenames in your tree, no discovery of
 your tests. Covers `.env` precedence and credential scrubbing, fence stripping, JSON
 recovery from prose, plan schema rejection, path/protected-file/test-root rejection, pytest
 exit-code classification (collection error, fixture error), snapshot/restore in both

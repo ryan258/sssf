@@ -39,15 +39,17 @@ AOP (Autonomous OpenRouter Pipeline) is a single-file, zero-dependency Python co
               │                         ▼                 │
               │                  gate failed (>3)         │
               │                         │                 │
-              │                 revert & abort            │
+              │                 revert & abort ◀──────────┤ (review failure /
+              │                        ▲                  │  cancellation)
+              │                        │                  ▼
+              │                        │   ┌──────────────────────────────┐
+              │                        └───┤ review (Gemma-26B-IT:free)   │
+              │                            │ unified diff + gate receipt  │
+              │                            └──────────────┬───────────────┘
+              │                                           │ (review passed)
               │                                           ▼
-              │                          ┌──────────────────────────────┐
-              │                          │ review (Gemma-26B-IT:free)   │
-              │                          │ unified diff + gate receipt  │
-              │                          └──────────────┬───────────────┘
-              │                                         │
-              │                                 working tree left dirty
-              │                                 (uncommitted for human)
+              │                                   working tree left dirty
+              │                                   (uncommitted for human)
 ```
 
 ---
@@ -84,6 +86,7 @@ No model tokens are spent during verification. Python and pytest deterministical
 
 ### 2.5 Review Phase
 - Invoked **only** if the gate passes completely.
+- Runs inside the protected lifecycle boundary (`try ... except BaseException`): if the review model call fails (transport error, timeout, rate limit) or the user cancels with Ctrl-C, all changes to declared files are rolled back, preventing partial success states.
 - Reads the actual `git`-style unified diff (up to 20k characters), the scout summary, the full test contract, and the concrete verification evidence receipt.
 - Calls `REVIEWER` model (`google/gemma-4-26b-a4b-it:free`) to generate release notes and flag any untracked edge cases.
 
@@ -97,7 +100,7 @@ No model tokens are spent during verification. Python and pytest deterministical
 | **Protected Files** | `PROTECTED` set blocks targeting `aop.py`, `conftest.py`, `setup.py`, `pyproject.toml`, `pytest.ini`, `tox.ini`, `setup.cfg`. | Prevents model from modifying pipeline logic or pytest execution harness. |
 | **Test Root Isolation** | `test_file` must reside under `tests/` and start with `test_`. | Ensures pytest collects only intended test modules. |
 | **Contract Immutability** | Target path cannot equal test path; contract bytes verified after every build attempt. | Prevents self-grading / self-modifying test bypasses. |
-| **Atomic-ish Revert** | In-memory binary snapshot of declared paths restored inside `try ... except BaseException`. | Cleans working tree on provider error, timeout, Ctrl-C, or gate exhaustion. **Limit:** Crash during write (`kill -9`, power loss) has no journal. |
+| **Atomic-ish Revert** | In-memory binary snapshot of declared paths restored inside `try ... except BaseException` spanning build, gate, and review phases. Context managers ensure flush errors propagate immediately. | Cleans working tree on provider error, timeout, Ctrl-C, gate exhaustion, or review failure. **Limit:** Crash during write (`kill -9`, power loss) has no journal. |
 | **Credential Boundary** | `runner_env()` scrubs environment variables matching `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `CREDENTIAL`, `API`, `AUTH`. | Prevents generated tests from reading `OPENROUTER_API_KEY` or system secrets via `os.environ`. |
 | **Sandboxing Boundary** | Not sandboxed. Subprocess runs with current user privileges. | Tests can perform filesystem and network I/O permitted to the local user. Untrusted code should run in disposable containers. |
 | **Token Budget** | `TOKEN_BUDGET = 400_000` caps cumulative tokens across all model calls. | Terminates runaway retry loops before unexpected token usage occurs. |
@@ -107,12 +110,14 @@ No model tokens are spent during verification. Python and pytest deterministical
 
 ## 4. Verification & Testing Architecture
 
-AOP contains a built-in zero-dependency selftest suite executable via:
+AOP provides two complementary test layers:
+
+### 1. Built-in Selftest Harness (`aop.py --selftest`)
+Zero-dependency suite executable via:
 ```bash
 python3 aop.py --selftest
 ```
 
-### Selftest Design:
 - Runs inside an ephemeral `tempfile.TemporaryDirectory` with its own initialized git repository.
 - Does not touch or inspect the host repository's test files.
 - Stubs `call()` via `fake_call()` to verify:
@@ -125,3 +130,15 @@ python3 aop.py --selftest
   - Pre-generation write safety (no file clobber on provider failure).
   - Path collision rejection between target and contract.
   - Complete happy-path execution leaving files in place.
+
+### 2. Offline Unit Regressions (`tests/test_review_rollback.py`)
+Executable via:
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+Focused unit regression suite verifying:
+- Review phase failure and user cancellation rollback (exact-byte restoration of pre-existing targets and complete removal of newly-generated targets and test contracts).
+- Gate exhaustion cleanup.
+- Target retention upon verified success.
+- Immediate surfacing of buffered I/O flush errors during `write()` and `restore()`.
